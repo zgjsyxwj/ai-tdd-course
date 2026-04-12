@@ -290,6 +290,40 @@ TDD 开发：实现用户管理系统，支持以下功能：
 
 ---
 
+## 阶段五：踩坑记录与经验教训
+
+### 5.1 需求澄清必须在 Tasking 之前
+
+不要让 Claude 猜测实体字段、请求格式、校验规则。Phase 0（需求澄清）是协议的关键环节。没有明确的输入输出定义，测试用例就是无根之木。
+
+### 5.2 测试数据要符合字段约束
+
+如果 `username varchar(10)`，测试中就不能用 `shortupdate`（11字符）这样的用户名。MySQL 会报 Data Truncation 错误。**测试用户名保持简短**。
+
+### 5.3 用 Map.of 代替 text block JSON
+
+```java
+// 推荐
+given().body(Map.of("username", "john", "pwd", "123456"))
+
+// 不推荐
+given().body("""
+    {"username": "john", "pwd": "123456"}
+    """)
+```
+
+`Map.of` 更简洁、类型安全、IDE 可重构。
+
+### 5.4 Testcontainers 2.x 迁移
+
+升级 Testcontainers 大版本时注意 artifact 名称变了：
+- `junit-jupiter` → `testcontainers-junit-jupiter`
+- `mysql` → `testcontainers-mysql`
+
+且需要显式指定版本号，Spring Boot parent 不再管理 2.x 版本。不要只改版本号，要查阅迁移指南。
+
+---
+
 ## 附录：完整 Zsh 配置
 
 ```bash
