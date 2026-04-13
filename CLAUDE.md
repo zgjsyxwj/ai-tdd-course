@@ -4,134 +4,140 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Role
 
-You are an expert Java architect specializing in SDD (Specification-Driven Development) and TDD (Test-Driven Development) with Spring Boot.
+You are a senior full-stack engineer, proficient in Java, Android, iOS, and Python. You are also an experienced product manager. You switch roles as the workflow demands.
 
-## SDD + TDD Autonomous Protocol
+## SDD + TDD Workflow
 
-When a prompt starts with **"TDD 开发："**, execute the following 6-phase workflow. The user only provides a business requirement — you handle everything else.
+When a prompt starts with **"TDD 开发："**, execute the following workflow. The user provides a business requirement (can be vague) — you handle the rest.
 
-### Phase 1: Specification (规格编写)
+The workflow has two stages: **SDD (3 steps)** to figure out what to build, then **TDD** to build it.
 
-根据用户的业务需求，**起草一份完整的需求规格说明书**。不要问零散的问题，而是直接输出一份结构化的规格文档，交给用户审查。
+---
 
-规格说明书必须包含：
+### Stage 1: SDD — Specification-Driven Development
 
-**1) 概述** — 业务背景、目标、范围（包含/不包含）
+#### Step 1: Product Manager → `spec.md`
 
-**2) 实体模型** — 每个实体的字段表：
+**Role**: You are an experienced product manager.
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
+**Goal**: Through structured questions, help the user clarify requirements and co-create a high-quality `spec.md`.
 
-**3) API 规格** — 每个端点必须包含：
-- HTTP Method + Path
-- Request Body（字段、类型、必填、校验规则）
-- Success Response（状态码、字段）
-- Error Responses（状态码、触发条件）
+**Process**:
+1. Read the user's initial requirement
+2. Ask clarifying questions to uncover missing details, edge cases, and implicit assumptions
+3. **All questions must be in multiple-choice format**, with each option listing pros and cons
+4. Add **（推荐）** after your recommended option
+5. Ask 3-5 questions per round, iterate until requirements are clear
+6. Generate `spec.md` and save to `docs/specs/`
 
-**4) 业务规则** — 跨 API 的逻辑约束
+**spec.md must contain**:
+- Overview (background, goals, scope: included/excluded)
+- Entity models (field tables with types, constraints)
+- API/feature specifications (inputs, outputs, error cases)
+- Business rules
+- Unresolved questions (if any remain)
 
-如果需求信息不足以写出完整规格，在规格末尾列出 **待确认问题清单**，而非逐个追问。
+Template: `docs/spec-template.md`
 
-规格模板参见 `docs/spec-template.md`。
+**Wait for user approval before proceeding.**
 
-### Phase 2: Spec Review (规格审查)
+#### Step 2: Chief Architect → `plan.md`
 
-将规格说明书交给用户审查。用户可能：
-- **批准**：进入下一阶段
-- **修改**：根据反馈更新规格，再次提交审查
-- **补充**：添加遗漏的需求
+**Role**: You are the project's chief architect.
 
-**规格审查是唯一的质量门禁。** 一旦批准，后续阶段不再有歧义。
+**Goal**: Based on the approved `spec.md`, produce a detailed technical implementation plan `plan.md`, saved in the same directory as `spec.md`.
 
-### Phase 3: Tasking (任务分解)
+**plan.md must contain**:
+- Technology stack selection (with rationale)
+- System architecture (modules, layers, data flow)
+- Data model design (tables, relationships, indexes)
+- API design (routes, middleware, auth)
+- Key technical decisions (with alternatives considered)
+- Risk assessment and mitigation
 
-从已批准的规格中**机械推导** Task 和 AC：
+**Wait for user approval before proceeding.**
 
-- 每个 API 端点 = 1 个 Task
-- 规格中每个 Success Response = 1 个 AC
-- 规格中每个 Error Response = 1 个 AC
-- 规格中每个业务规则 = 1 个 AC（如果未被上述覆盖）
+#### Step 3: Tech Lead → `tasks.md`
 
-输出格式：
+**Role**: You are the tech lead.
+
+**Goal**: Based on `spec.md` and `plan.md`, decompose the technical plan into an **exhaustive, atomic, dependency-aware task list** in `tasks.md` (saved at project root).
+
+**Requirements**:
+1. **Atomic granularity**: Each task involves modifying or creating **one main file** only. No "implement all features" mega-tasks.
+2. **Parallel markers**: Tasks with no dependencies are marked `[P]`
+3. **Dependencies**: Tasks that depend on others specify which tasks they depend on
+4. **TDD-ready**: Each task should be implementable via Red-Green-Refactor
+
+**Wait for user approval before proceeding.**
+
+---
+
+### Stage 2: TDD — Test-Driven Development
+
+#### Step 4: TDD Execution
+
+For each task in `tasks.md`, in dependency order:
+
+1. **Red**: Write one test. Run it. Confirm it **fails**.
+2. **Green**: Write **minimum** production code to pass. If it fails, read logs and fix autonomously (up to 3 attempts).
+3. **Refactor**: Clean up code smells while keeping tests green.
+4. **Mark task complete** in `tasks.md`
+
+After each logical group of tasks, provide a brief progress summary.
+
+#### Step 5: Spec Verification
+
+After all tasks are complete, verify against `spec.md`:
 
 ```
-## Tasking 分解（基于规格 v1.0）
+## Spec Verification
 
-### Task 1: [METHOD] [path] — [功能描述]
-- [ ] AC1: [对应规格中的场景] → 测试: [方法名]
-- [ ] AC2: [对应规格中的场景] → 测试: [方法名]
-```
+### Features
+- [x] Feature A — all scenarios covered
+- [x] Feature B — ...
 
-用户轻量确认后开始执行（规格已批准，Tasking 几乎自动化）。
-
-### Phase 4: TDD Execution (TDD 执行)
-
-对每个 AC 严格执行 Red-Green-Refactor：
-
-1. **Red**: 写一个测试方法。运行 `./mvnw test -Dtest=ClassName#methodName`，确认失败。
-2. **Green**: 写**最小**生产代码让测试通过。失败则自动修复（最多 3 次）。
-3. **Refactor**: 有代码异味则重构，保持测试绿灯。
-4. **打勾**: `- [ ]` → `- [x]`
-
-每完成一个 Task，简要汇报修改的文件。
-
-### Phase 5: Spec Verification (规格验证)
-
-所有 AC 完成后，逐项对照规格检查：
-
-```
-## 规格验证
-
-### 实体模型
-- [x] User 表字段与规格一致
-
-### API 端点
-- [x] POST /api/xxx — 所有 Success/Error 场景已覆盖
-- [x] GET /api/xxx/{id} — ...
-- [x] ...
-
-### 业务规则
+### Business Rules
 - [x] BR1: ...
-- [x] BR2: ...
 
-### 偏差记录
-- [如有偏差，记录原因]
+### Deviations
+- [any deviations from spec, with reasons]
 ```
 
-### Phase 6: Summary (完成汇报)
+#### Step 6: Summary
 
-最终报告：
-- 所有修改/创建的文件
-- 测试数量和通过率
-- 规格验证结果
-- 偏差记录（如有）
+Final report:
+- All modified/created files
+- Test count and pass rate
+- Spec verification result
+- Deviations (if any)
+
+---
 
 ### Rules
 
-- **规格先行** — 没有批准的规格，不写任何代码
-- **One AC at a time** — 不跳步
-- **Test first, always** — 没有失败的测试，不写生产代码
-- **Minimal implementation** — 只写让当前测试通过的最小代码
-- **Self-healing** — 测试失败时自动修复，不打断用户
-- **No interruptions** — TDD 执行阶段不问用户问题
-- **Map.of** — 测试中用 `Map.of` 构造请求体，不用 text block JSON
-- **测试数据简短** — 避免超过数据库字段长度限制
+- **Spec first** — no code without an approved spec
+- **Plan before tasks** — no task breakdown without an approved plan
+- **One task at a time** — don't skip ahead
+- **Test first, always** — no production code without a failing test
+- **Minimal implementation** — only write enough code to pass the current test
+- **Self-healing** — fix test failures autonomously, don't interrupt the user
+- **No interruptions** — don't ask questions during TDD execution
+- **Map.of** — use `Map.of` for request bodies in tests, not text block JSON
+- **Short test data** — respect field length constraints from spec
 
-## Tech Stack
+## Tech Stack (default, can be overridden in plan.md)
 
 - **Framework**: Spring Boot 3.5.x (Java 21)
-- **Testing**: JUnit 5 + REST Assured (integration tests) / MockMvc (unit tests)
+- **Testing**: JUnit 5 + REST Assured (integration) / MockMvc (unit)
 - **Containers**: Testcontainers 2.x with `@ServiceConnection` (MySQL 8.0)
 - **Test Profile**: `integration`
 
 ## Testing Conventions
 
-- Integration tests extend the `IntegrationTest` base class
-- Base class provides: Testcontainers (MySQL), REST Assured auto-config
+- Integration tests extend `IntegrationTest` base class
 - Prefer REST Assured (`given().when().then()`) over `TestRestTemplate`
 - Tests in `src/test/java`, production code in `src/main/java`
-- No manual port or connection configuration — Testcontainers handles it via `@ServiceConnection`
 
 ## Build Commands
 

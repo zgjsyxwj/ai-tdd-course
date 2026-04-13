@@ -6,350 +6,257 @@
 用户输入业务需求（可以模糊）
          │
          ▼
-┌──────────────────────┐
-│  Phase 1: Spec        │  Claude 起草需求规格说明书
-│  (规格编写)            │  实体模型 + API 合约 + 校验 + 业务规则
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│  Phase 2: Review      │  用户审查规格，批准/修改
-│  (规格审查)            │  这是唯一的质量门禁
-└──────────┬───────────┘
-           │ 用户批准
-           ▼
-┌──────────────────────┐
-│  Phase 3: Tasking     │  从规格机械推导 Task + AC
-│  (任务分解)            │  用户轻量确认
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│  Phase 4: TDD         │  逐个 AC 执行 Red → Green → Refactor
-│  (TDD 执行)           │  无需用户干预
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│  Phase 5: Verify      │  逐项对照规格检查实现完整性
-│  (规格验证)            │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│  Phase 6: Summary     │  汇报文件、测试、偏差
-│  (完成汇报)            │
-└──────────────────────┘
+┌─ SDD 阶段 ─────────────────────────────────┐
+│                                             │
+│  Step 1: Product Manager → spec.md          │
+│  选择题提问，澄清需求，共创规格说明书           │
+│           │ 用户批准                          │
+│           ▼                                  │
+│  Step 2: Chief Architect → plan.md          │
+│  技术选型，系统架构，数据模型设计               │
+│           │ 用户批准                          │
+│           ▼                                  │
+│  Step 3: Tech Lead → tasks.md               │
+│  原子化任务分解，标注依赖关系和并行标记 [P]      │
+│           │ 用户批准                          │
+└───────────┼─────────────────────────────────┘
+            ▼
+┌─ TDD 阶段 ─────────────────────────────────┐
+│                                             │
+│  Step 4: TDD Execution                      │
+│  按 tasks.md 顺序，逐个任务 Red→Green→Refactor│
+│           │                                  │
+│           ▼                                  │
+│  Step 5: Spec Verification                  │
+│  对照 spec.md 逐项验证实现完整性              │
+│           │                                  │
+│           ▼                                  │
+│  Step 6: Summary                            │
+│  汇报文件、测试、偏差                         │
+└─────────────────────────────────────────────┘
 ```
 
 **核心理念**：
-- **SDD 解决「做什么」** — 规格说明书是唯一真相源
-- **TDD 解决「怎么做」** — Red-Green-Refactor 保证实现正确性
-- **用户只在两个节点介入**：审查规格 + 确认 Tasking
+- **SDD 3 步解决「做什么」和「怎么做」** — 3 个角色（PM → 架构师 → 技术组长）逐步细化
+- **TDD 解决「做得对不对」** — Red-Green-Refactor 保证实现正确性
+- **用户在 3 个节点介入**：批准 spec → 批准 plan → 批准 tasks
 
 ---
 
-## 一、环境准备（一次性配置）
-
-### 1.1 安装依赖
-
-```bash
-# Java 21
-brew install openjdk@21
-echo 'export PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH"' >> ~/.zshrc
-echo 'export JAVA_HOME="/opt/homebrew/opt/openjdk@21"' >> ~/.zshrc
-source ~/.zshrc
-
-# Docker (Testcontainers 需要)
-brew install --cask docker
-```
-
-### 1.2 项目配置
-
-1. 项目根目录放置 `CLAUDE.md`（SDD + TDD 协议）
-2. 准备测试基类 `IntegrationTest.java`（Testcontainers + REST Assured）
-3. 创建 `docs/specs/` 目录用于存放规格说明书
-
-### 1.3 Zsh 快捷命令（可选）
-
-```bash
-# SDD + TDD 自动驾驶
-tdd() {
-  if [ -z "$1" ]; then
-    echo "用法: tdd '你的需求'"
-    return 1
-  fi
-  claude -p "TDD 开发：$*"
-}
-```
-
----
-
-## 二、Phase 1: Specification（规格编写）
+## Step 1: Product Manager → spec.md
 
 ### 触发方式
 
 ```
-TDD 开发：实现用户管理系统，支持注册、查询、列表、修改密码、删除。
+TDD 开发：[你的业务需求，可以很模糊]
 ```
 
 ### Claude 的行为
 
-Claude **不会逐个追问细节**，而是直接输出一份完整的规格说明书：
+Claude 切换为**产品经理角色**，通过选择题提问帮助用户澄清需求：
 
-```markdown
-# 用户管理系统 需求规格说明
+- 每轮 3-5 个问题
+- **所有问题必须是选择题**，每个选项列出优缺点
+- 推荐选项后面加 **（推荐）**
+- 多轮迭代，直到需求清晰
 
-## 1. 概述
-- 业务背景：系统需要基础的用户管理模块
-- 目标：提供用户 CRUD 的 REST API
-- 范围：包含注册/查询/列表/改密/删除，不含登录认证
+### 示例
 
-## 2. 实体模型
-
-### User
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | int | PK, 自增 | 主键 |
-| username | varchar(50) | 必填, 唯一 | 用户名 |
-| pwd | varchar(100) | 必填, 最小6位 | 密码 |
-
-## 3. API 规格
-
-### 3.1 POST /api/users — 用户注册
-...（完整的 Request/Response/Error 定义）
-
-## 4. 业务规则
-- BR1: username 全局唯一
-- BR2: 响应不返回 pwd
-
-## 待确认问题
-1. username 的最大长度？
-2. 删除是硬删除还是软删除？
 ```
+用户：TDD 开发：做一个听书 APP，支持 AI 配音
 
-### 关键点
+Claude（PM 角色）：
 
-- 规格覆盖所有细节：字段、类型、约束、每个状态码的触发条件
-- 如果需求信息不足，在规格末尾列出**待确认问题清单**，一次性向用户确认
-- 模板参见 `docs/spec-template.md`
+**Q1: 目标平台？**
+A) Android + iOS（推荐）
+   优点：覆盖面广  缺点：开发成本高
+B) 仅 Android
+   优点：成本低  缺点：丢失 iOS 用户
+C) Web 应用
+   优点：跨平台  缺点：离线体验差
 
----
-
-## 三、Phase 2: Spec Review（规格审查）
-
-### 用户操作
-
-用户审查规格说明书，可以：
-
-- **批准**：回复"确认"或"批准"，进入 Tasking
-- **修改**：指出需要修改的部分，Claude 更新规格后重新提交
-- **补充**：添加遗漏的需求
-
-### 为什么这是唯一的质量门禁
-
-| 阶段 | 旧流程 | 新流程 |
-|------|--------|--------|
-| 需求理解 | 碎片化追问，容易遗漏 | 一次性输出完整规格 |
-| Tasking | 需要用户仔细审查每个 AC | 从规格自动推导，轻量确认 |
-| TDD 执行 | 可能因需求不清导致返工 | 规格已批准，无歧义 |
-
-**规格批准后，后续所有工作都有据可依。**
-
----
-
-## 四、Phase 3: Tasking（任务分解）
-
-### 推导规则
-
-从规格机械推导，不需要创造性判断：
-
-| 规格内容 | 推导为 |
-|----------|--------|
-| 每个 API 端点 | 1 个 Task |
-| 每个 Success Response | 1 个 AC |
-| 每个 Error Response | 1 个 AC |
-| 每个独立的业务规则 | 1 个 AC（如未被上述覆盖）|
-
-### 示例输出
-
-```markdown
-## Tasking 分解（基于规格 v1.0）
-
-### Task 1: POST /api/users — 用户注册
-- [ ] AC1: 有效数据注册成功返回 201 + {id, username} → should_register_user_successfully
-- [ ] AC2: username 为空返回 400 → should_return_400_when_username_is_blank
-- [ ] AC3: pwd 为空返回 400 → should_return_400_when_pwd_is_blank
-- [ ] AC4: pwd 少于6位返回 400 → should_return_400_when_pwd_too_short
-- [ ] AC5: username 已存在返回 409 → should_return_409_when_username_exists
-
-### Task 2: GET /api/users/{id} — 查询用户
-- [ ] AC1: 查询存在的用户返回 200 → should_get_user_by_id
-- [ ] AC2: 查询不存在的用户返回 404 → should_return_404_when_user_not_found
+**Q2: TTS 引擎选型？**
+A) 对接第三方 API（如 Azure TTS）（推荐）
+   优点：音质好，开箱即用  缺点：有 API 成本
+B) 本地推理（如 Coqui TTS）
+   优点：无 API 成本  缺点：需要 GPU，音质一般
 ...
 ```
 
-用户轻量确认后，进入 TDD 执行。
+### 产出
+
+问答完成后，Claude 生成 `spec.md` 并保存到 `docs/specs/[项目名].md`。
+
+**用户审查并批准后**，进入 Step 2。
 
 ---
 
-## 五、Phase 4: TDD Execution（TDD 执行）
+## Step 2: Chief Architect → plan.md
 
-### 对每个 AC 执行 Red-Green-Refactor
+### Claude 的行为
 
-**Step 1 - Red**
+Claude 切换为**首席架构师角色**，阅读已批准的 `spec.md`，输出技术实现方案 `plan.md`，保存在 `spec.md` 同一目录下。
 
-Claude 根据规格编写测试，使用 `Map.of` 构造参数：
+### plan.md 包含
 
-```java
-@Test
-void should_register_user_successfully() {
-    given()
-        .body(Map.of("username", "john", "pwd", "123456"))
-    .when()
-        .post("/api/users")
-    .then()
-        .statusCode(201)
-        .body("id", notNullValue())
-        .body("username", equalTo("john"))
-        .body("pwd", equalTo(null));
-}
-```
+| 章节 | 内容 |
+|------|------|
+| 技术栈选型 | 语言、框架、数据库、第三方服务，附理由 |
+| 系统架构 | 模块划分、分层结构、数据流 |
+| 数据模型 | 表结构、关系、索引 |
+| API 设计 | 路由、中间件、认证 |
+| 关键技术决策 | 每个决策列出备选方案和取舍 |
+| 风险评估 | 技术风险和应对措施 |
 
-运行测试，确认失败。
+### 关键点
 
-**Step 2 - Green**
+- plan.md 是 spec.md 的技术翻译——spec 说「做什么」，plan 说「怎么做」
+- 技术选型必须给出理由，不能拍脑袋
+- 如果 spec 中有技术上不可行的需求，在 plan 中标注并建议替代方案
 
-编写最小生产代码让测试通过。
-
-**Step 3 - Refactor**
-
-有代码异味则重构，确保测试仍然通过。
-
-**Step 4 - 打勾，继续下一个 AC**
-
-### 关键规则
-
-- 一次只做一个 AC，不跳步
-- 测试失败时自动读日志修复，不打断用户
-- 每完成一个 Task 简要汇报
+**用户审查并批准后**，进入 Step 3。
 
 ---
 
-## 六、Phase 5: Spec Verification（规格验证）
+## Step 3: Tech Lead → tasks.md
 
-所有 AC 完成后，Claude 逐项对照规格检查：
+### Claude 的行为
+
+Claude 切换为**技术组长角色**，阅读 `spec.md` 和 `plan.md`，将技术方案分解为**原子化任务列表** `tasks.md`，保存在项目根目录。
+
+### tasks.md 格式
 
 ```markdown
-## 规格验证
+# Tasks
 
-### 实体模型
-- [x] User 表字段与规格一致（id, username, pwd）
+## Phase 1: 项目初始化
+- [ ] [P] Task 1: 创建项目骨架和 pom.xml
+- [ ] [P] Task 2: 创建 application.yml 配置文件
+- [ ] Task 3: 创建 IntegrationTest 基类 (依赖: Task 1)
 
-### API 端点
-- [x] POST /api/users — 5 个场景全部覆盖
-- [x] GET /api/users/{id} — 2 个场景全部覆盖
-- [x] GET /api/users — 1 个场景覆盖
-- [x] PUT /api/users/{id} — 3 个场景全部覆盖
-- [x] DELETE /api/users/{id} — 2 个场景全部覆盖
+## Phase 2: 用户模块
+- [ ] Task 4: 创建 User 实体类 (依赖: Task 1)
+- [ ] Task 5: 创建 UserRepository (依赖: Task 4)
+- [ ] [P] Task 6: 创建 UserRequest DTO (依赖: Task 4)
+- [ ] [P] Task 7: 创建 UserResponse DTO (依赖: Task 4)
+- [ ] Task 8: 编写用户注册测试 + 实现 (依赖: Task 3, 5, 6, 7)
+...
+```
 
-### 业务规则
-- [x] BR1: username 唯一 — 通过 UNIQUE 约束 + Service 检查
-- [x] BR2: 响应不返回 pwd — UserResponse 只含 id, username
-- [x] BR3: 硬删除 — deleteById
+### 关键要求
 
-### 偏差记录
+1. **原子化**：每个任务只涉及**一个主要文件**的创建或修改
+2. **并行标记 [P]**：无依赖的任务标记 `[P]`，可并行执行
+3. **依赖关系**：有依赖的任务注明依赖哪些前置任务
+4. **TDD 友好**：涉及业务逻辑的任务应可通过 Red-Green-Refactor 实现
+
+**用户审查并批准后**，进入 Step 4。
+
+---
+
+## Step 4: TDD Execution
+
+### Claude 的行为
+
+按 `tasks.md` 的顺序，对每个任务执行：
+
+1. **Red**: 写测试，运行，确认失败
+2. **Green**: 写最小实现让测试通过（失败则自动修复，最多 3 次）
+3. **Refactor**: 重构代码，保持测试绿灯
+4. 在 `tasks.md` 中标记 `- [x]`
+
+### 规则
+
+- 一次一个任务，不跳步
+- TDD 执行阶段不打断用户
+- 每完成一组相关任务（一个 Phase），简要汇报进度
+- 用 `Map.of` 构造测试请求体
+- 测试数据遵守 spec 中的字段约束
+
+---
+
+## Step 5: Spec Verification
+
+所有任务完成后，逐项对照 `spec.md` 验证：
+
+```markdown
+## Spec Verification
+
+### Features
+- [x] 用户注册 — 5 个场景全部覆盖
+- [x] 用户查询 — 2 个场景全部覆盖
+...
+
+### Business Rules
+- [x] BR1: username 唯一
+- [x] BR2: 响应不返回密码
+
+### Deviations
 - 无
 ```
 
 ---
 
-## 七、Phase 6: Summary（完成汇报）
+## Step 6: Summary
 
 ```markdown
-## 完成汇报
+## Summary
 
-### 修改/创建的文件
-- src/main/java/.../User.java (新建)
-- src/main/java/.../UserController.java (新建)
+### Files Created/Modified
+- src/main/java/.../User.java (new)
 - ...
 
-### 测试结果
-- 总计 13 个测试，全部通过
-- 覆盖 5 个 API 端点，13 个验收条件
+### Test Results
+- 13 tests, all passed
 
-### 规格验证
-- 全部通过，无偏差
+### Spec Verification
+- All passed, no deviations
 
-### 规格说明书
-- docs/specs/user-management.md
+### Key Documents
+- docs/specs/xxx-spec.md
+- docs/specs/xxx-plan.md
+- tasks.md
 ```
 
 ---
 
-## 八、实战演示
-
-### 用户输入
-
-```
-TDD 开发：实现用户管理系统，支持注册、查询、列表、修改密码、删除。
-```
-
-### 完整流程
-
-| 阶段 | 用户操作 | Claude 操作 | 产出 |
-|------|----------|-------------|------|
-| Phase 1 | 等待 | 起草规格说明书 | `docs/specs/user-management.md` |
-| Phase 2 | 审查规格，回复"username varchar(10), pwd varchar(30)" | 更新规格 | 规格 v1.1 |
-| Phase 2 | 批准 | - | 规格锁定 |
-| Phase 3 | 确认 Tasking | 从规格推导 13 个 AC | Tasking 清单 |
-| Phase 4 | 喝茶 | 逐个 AC 执行 TDD | 13 个绿灯测试 |
-| Phase 5 | - | 对照规格验证 | 验证报告 |
-| Phase 6 | Code Review | 输出汇报 | 完成 |
-
-### 参考项目
-
-`example/` 目录是使用此工作流生成的完整用户管理系统。
-`docs/specs/user-management.md` 是对应的规格说明书。
-
----
-
-## 九、最佳实践
+## 最佳实践
 
 ### Do
 
-- **需求可以模糊**：SDD 阶段会帮你补全细节，不需要写得很精确
-- **认真审查规格**：这是唯一的质量门禁，在这里花时间比在代码里花时间值
-- **分功能出规格**：每个独立功能一份规格，不要把所有功能塞进一个规格
-- **规格存档**：批准的规格保存在 `docs/specs/`，作为文档长期保留
+- **需求可以模糊**：PM 阶段会通过选择题帮你补全
+- **认真审查 spec**：这是最重要的质量门禁
+- **认真审查 plan**：技术选型错误比代码 bug 代价更大
+- **分功能出 spec**：大项目拆成多个独立功能，每个功能走一遍完整流程
+- **文档存档**：spec.md + plan.md + tasks.md 长期保留
 
 ### Don't
 
-- **不要跳过规格**：没有规格就没有 Tasking 的依据
-- **不要在 TDD 阶段改需求**：改需求应该回到规格阶段
-- **不要一次做太多**：单次建议不超过 5 个 Task / 15 个 AC
-- **不要忽略规格验证**：Phase 5 是确保没有遗漏的最后一道防线
+- **不要跳过 SDD**：没有 spec 和 plan 就没有任务分解的依据
+- **不要在 TDD 阶段改需求**：改需求应该回到 spec 阶段
+- **不要一次做太多**：单次建议不超过 20 个原子任务
+- **不要忽略 plan**：spec 到 tasks 之间缺了 plan，会导致技术方向混乱
 
 ---
 
-## 十、踩坑记录
+## 踩坑记录
 
-### 10.1 没有规格就开始 Tasking
+### 1. 没有规格就开始写代码
 
-**后果**：AC 的字段、格式、校验规则全靠猜测，测试写了也白写。
-**正确做法**：Phase 1 起草规格 → Phase 2 用户审查批准 → 再 Tasking。
+**后果**：字段、格式、校验规则全靠猜，测试写了也白写。
+**正确做法**：PM 阶段用选择题澄清，生成 spec.md 后再动手。
 
-### 10.2 测试数据超过字段长度
+### 2. 跳过技术方案直接分任务
 
-**后果**：`username varchar(10)` 但测试用了 11 字符的用户名，报 Data Truncation。
-**正确做法**：测试数据必须符合规格中定义的字段约束。
+**后果**：任务分解缺乏架构指导，实现过程中频繁推翻重来。
+**正确做法**：先出 plan.md（架构师视角），再出 tasks.md（技术组长视角）。
 
-### 10.3 用 text block JSON 构造请求体
+### 3. 测试数据超过字段长度
 
-**后果**：容易出现格式错误，不可重构。
+**后果**：Data Truncation 错误。
+**正确做法**：测试数据必须符合 spec 中定义的字段约束。
+
+### 4. 用 text block JSON 构造请求体
+
+**后果**：容易出格式错误，不可重构。
 **正确做法**：使用 `Map.of("key", "value")`。
-
-### 10.4 Testcontainers 版本兼容性
-
-**后果**：1.x 的 artifact 名称与 2.x 不同，直接改版本号会报错。
-**正确做法**：升级大版本时查阅迁移指南。
