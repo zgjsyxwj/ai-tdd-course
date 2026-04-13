@@ -1,34 +1,43 @@
 # Lessons Learned
 
-## 1. TDD 流程：必须先澄清需求再 Tasking
+## 1. SDD：规格先行，不要边问边做
 
-**问题**：直接根据模糊需求拆解 AC 并开始写测试，字段、格式、校验规则全靠猜。
-**教训**：在 Tasking 之前新增 Phase 0（需求澄清），主动向用户确认实体字段、Request/Response 格式、校验规则等。没有明确的输入输出定义，TDD 的测试用例就是无根之木。
-**规则**：永远不要假设业务细节，哪怕看起来很"显然"。
+**问题**：Phase 0（需求澄清）是碎片化的——Claude 逐个追问字段、格式、规则，用户反复回答，容易遗漏。
+**教训**：用 SDD 的规格说明书取代零散的需求澄清。Claude 应该一次性输出完整规格，交给用户审查。规格说明书是唯一真相源。
+**规则**：没有批准的规格，不写任何代码。
 
-## 2. TDD 流程：Tasking 需要用户确认才能执行
+## 2. SDD：规格审查是唯一的质量门禁
 
-**问题**：第一次跳过了 Tasking 确认步骤，直接开始写测试代码。
-**教训**：Tasking 确认是质量门禁，用户可能会补充遗漏的边界条件或调整优先级。自主 TDD 的"自主"是指执行阶段自主，不是跳过确认。
-**规则**：输出 Tasking 清单后，必须等用户明确回复"确认"或类似指令。
+**问题**：如果在 Tasking 或 TDD 阶段才发现需求不清，导致返工。
+**教训**：把所有的需求确认集中在规格审查阶段。一旦规格批准，后续不再有歧义。改需求应该回到规格阶段，不要在 TDD 执行阶段改。
+**规则**：规格批准后，Tasking 可以机械推导，TDD 可以无脑执行。
 
-## 3. 测试数据：注意字段长度约束
+## 3. SDD：Tasking 从规格机械推导
 
-**问题**：测试中使用了 `shortupdate`（11字符）作为用户名，超过了 `varchar(10)` 的限制，导致 Data Truncation 500 错误。
-**教训**：测试数据必须符合实体的约束定义。写测试时要时刻记住字段长度、格式等限制。
-**规则**：测试用户名保持简短（如 `user1`, `short2`），避免超过数据库字段长度。
+**问题**：Tasking 阶段需要创造性判断，容易遗漏边界条件。
+**教训**：有了规格说明书，Tasking 几乎是自动化的——每个 API = 1 Task，每个 Success/Error Response = 1 AC。不需要创造性判断。
+**规则**：每个 AC 必须能追溯到规格中的某个条目。
 
-## 4. 测试构造参数：Map.of 优于 text block JSON
+## 4. TDD：Tasking 需要用户确认才能执行
 
-**问题**：最初用 text block 拼 JSON 字符串作为请求体。
-**教训**：`Map.of("key", "value")` 更简洁、类型安全、不会出现 JSON 语法错误，且 IDE 可以重构。
-**规则**：REST Assured 测试中，优先使用 `Map.of` 构造请求体。
+**问题**：跳过 Tasking 确认步骤，直接开始写测试代码。
+**教训**：自主 TDD 的"自主"是指执行阶段自主，不是跳过确认。
+**规则**：输出 Tasking 清单后，必须等用户确认。
 
-## 5. Testcontainers 2.x 迁移注意事项
+## 5. TDD：测试数据必须符合字段约束
 
-**问题**：直接把 `<testcontainers.version>` 从 1.21.1 改成 2.0.2，导致 artifact 找不到。
-**教训**：Testcontainers 2.x 的 artifact 名称变了：
-- `junit-jupiter` → `testcontainers-junit-jupiter`
-- `mysql` → `testcontainers-mysql`
-且 Spring Boot parent 不再管理 2.x 版本，需要显式指定 `<version>`。
-**规则**：升级 Testcontainers 大版本时，查阅迁移指南，不要只改版本号。
+**问题**：测试中使用了超过 `varchar(10)` 限制的用户名，导致 Data Truncation 错误。
+**教训**：测试数据必须严格符合规格中定义的字段约束。
+**规则**：测试用户名保持简短，写测试前先看规格中的字段约束。
+
+## 6. TDD：用 Map.of 构造请求体
+
+**问题**：用 text block 拼 JSON 字符串，容易出格式错误且不可重构。
+**教训**：`Map.of("key", "value")` 更简洁、类型安全、IDE 可重构。
+**规则**：REST Assured 测试中优先使用 `Map.of`。
+
+## 7. Testcontainers 2.x 迁移
+
+**问题**：直接改版本号导致 artifact 找不到。
+**教训**：2.x 的 artifact 名称变了（`junit-jupiter` → `testcontainers-junit-jupiter`），且需要显式指定版本号。
+**规则**：升级大版本时查阅迁移指南。

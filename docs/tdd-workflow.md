@@ -1,34 +1,55 @@
-# Claude Code x Spring Boot 自主 TDD 工作流 SOP
+# SDD + TDD 自主开发工作流 SOP
 
 ## 流程总览
 
 ```
-用户输入业务需求
-       │
-       ▼
-┌─────────────────┐
-│  Phase 1: Tasking │  Claude 自动分解任务，输出 AC 清单
-│  (任务分解)       │  用户确认后进入下一阶段
-└────────┬────────┘
-         │ 用户确认
+用户输入业务需求（可以模糊）
+         │
          ▼
-┌─────────────────┐
-│  Phase 2: TDD    │  逐个 AC 执行 Red → Green → Refactor
-│  (循环执行)       │  每完成一个 AC 打勾，无需用户干预
-└────────┬────────┘
-         │ 全部 AC 完成
-         ▼
-┌─────────────────┐
-│  Phase 3: Summary│  汇报修改文件、测试覆盖、决策记录
-│  (完成汇报)       │
-└─────────────────┘
+┌──────────────────────┐
+│  Phase 1: Spec        │  Claude 起草需求规格说明书
+│  (规格编写)            │  实体模型 + API 合约 + 校验 + 业务规则
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Phase 2: Review      │  用户审查规格，批准/修改
+│  (规格审查)            │  这是唯一的质量门禁
+└──────────┬───────────┘
+           │ 用户批准
+           ▼
+┌──────────────────────┐
+│  Phase 3: Tasking     │  从规格机械推导 Task + AC
+│  (任务分解)            │  用户轻量确认
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Phase 4: TDD         │  逐个 AC 执行 Red → Green → Refactor
+│  (TDD 执行)           │  无需用户干预
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Phase 5: Verify      │  逐项对照规格检查实现完整性
+│  (规格验证)            │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Phase 6: Summary     │  汇报文件、测试、偏差
+│  (完成汇报)            │
+└──────────────────────┘
 ```
 
-**核心理念**：用户只负责「说什么」，Claude 负责「怎么做」。
+**核心理念**：
+- **SDD 解决「做什么」** — 规格说明书是唯一真相源
+- **TDD 解决「怎么做」** — Red-Green-Refactor 保证实现正确性
+- **用户只在两个节点介入**：审查规格 + 确认 Tasking
 
 ---
 
-## 阶段一：环境准备（一次性配置）
+## 一、环境准备（一次性配置）
 
 ### 1.1 安装依赖
 
@@ -43,63 +64,16 @@ source ~/.zshrc
 brew install --cask docker
 ```
 
-### 1.2 配置 CLAUDE.md
+### 1.2 项目配置
 
-在项目根目录放置 `CLAUDE.md` 文件，包含自主 TDD 协议。详见项目根目录的 `CLAUDE.md`。
+1. 项目根目录放置 `CLAUDE.md`（SDD + TDD 协议）
+2. 准备测试基类 `IntegrationTest.java`（Testcontainers + REST Assured）
+3. 创建 `docs/specs/` 目录用于存放规格说明书
 
-这是控制 Claude Code 行为的核心文件，定义了：
-- 角色（Java + TDD 架构专家）
-- 自主 TDD 三阶段协议（Tasking → TDD Execution → Summary）
-- 技术栈约定
-- 测试规范
-
-### 1.3 测试基类 IntegrationTest.java
-
-所有集成测试继承此基类，自动获得：
-- Testcontainers 管理的 MySQL + Redis 实例
-- REST Assured 自动配置（端口、Content-Type、JWT 认证）
-- `@ActiveProfiles("integration")` 激活测试配置
-
-```java
-@ActiveProfiles("integration")
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Testcontainers
-public abstract class IntegrationTest {
-
-    @LocalServerPort
-    private int port;
-
-    @Container
-    @ServiceConnection
-    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0");
-
-    @Container
-    @ServiceConnection
-    static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7.0"))
-            .withExposedPorts(6379);
-
-    @BeforeEach
-    public void setUpRestAssured() {
-        RestAssured.port = port;
-        RestAssured.requestSpecification = new RequestSpecBuilder()
-                .setContentType(ContentType.JSON)
-                .build();
-    }
-}
-```
-
-### 1.4 终端配置（推荐）
-
-使用分屏终端（Ghostty / iTerm2）：
-- **左屏**：运行 `claude` — AI 驾驶舱
-- **右屏**：Git 操作、Docker 监控、手动命令
-
-### 1.5 Zsh 快捷命令（可选）
-
-在 `~/.zshrc` 中添加：
+### 1.3 Zsh 快捷命令（可选）
 
 ```bash
-# 一键启动 TDD 自动驾驶
+# SDD + TDD 自动驾驶
 tdd() {
   if [ -z "$1" ]; then
     echo "用法: tdd '你的需求'"
@@ -107,243 +81,275 @@ tdd() {
   fi
   claude -p "TDD 开发：$*"
 }
-
-# 实体 CRUD 快速生成
-tdd-crud() {
-  if [ -z "$1" ]; then
-    echo "用法: tdd-crud '实体名称'"
-    return 1
-  fi
-  claude -p "TDD 开发：为 $1 生成完整的 CRUD（Controller/Service/Repository）及集成测试。"
-}
 ```
 
 ---
 
-## 阶段二：自主 TDD 协议详解
+## 二、Phase 1: Specification（规格编写）
 
-### 2.1 触发方式
-
-在 Claude Code 中输入以 **"TDD 开发："** 开头的需求：
+### 触发方式
 
 ```
-TDD 开发：实现用户管理系统，支持注册、查询、列表、更新、删除。
-用户名和邮箱必填，用户名不可重复。
+TDD 开发：实现用户管理系统，支持注册、查询、列表、修改密码、删除。
 ```
 
-### 2.2 Phase 1: Tasking（Claude 自动执行）
+### Claude 的行为
 
-Claude 分析需求后，输出结构化的任务清单：
+Claude **不会逐个追问细节**，而是直接输出一份完整的规格说明书：
 
 ```markdown
-## Tasking 分解
+# 用户管理系统 需求规格说明
 
-### Task 1: 用户注册 POST /api/users
-- [ ] AC1: 有效数据注册成功，返回 201 + 用户信息 → 测试: should_register_user_successfully
-- [ ] AC2: 用户名为空时返回 400 → 测试: should_return_400_when_username_is_blank
-- [ ] AC3: 邮箱为空时返回 400 → 测试: should_return_400_when_email_is_blank
-- [ ] AC4: 用户名已存在时返回 409 → 测试: should_return_409_when_username_exists
+## 1. 概述
+- 业务背景：系统需要基础的用户管理模块
+- 目标：提供用户 CRUD 的 REST API
+- 范围：包含注册/查询/列表/改密/删除，不含登录认证
 
-### Task 2: 用户查询 GET /api/users/{id}
-- [ ] AC1: 查询存在的用户返回 200 + 用户信息 → 测试: should_get_user_by_id
-- [ ] AC2: 查询不存在的用户返回 404 → 测试: should_return_404_when_user_not_found
+## 2. 实体模型
 
-### Task 3: 用户列表 GET /api/users
-- [ ] AC1: 返回所有用户列表 200 → 测试: should_list_all_users
+### User
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | int | PK, 自增 | 主键 |
+| username | varchar(50) | 必填, 唯一 | 用户名 |
+| pwd | varchar(100) | 必填, 最小6位 | 密码 |
 
-### Task 4: 用户更新 PUT /api/users/{id}
-- [ ] AC1: 有效数据更新成功返回 200 → 测试: should_update_user_successfully
-- [ ] AC2: 更新不存在的用户返回 404 → 测试: should_return_404_when_updating_nonexistent_user
+## 3. API 规格
 
-### Task 5: 用户删除 DELETE /api/users/{id}
-- [ ] AC1: 删除成功返回 204 → 测试: should_delete_user_successfully
-- [ ] AC2: 删除不存在的用户返回 404 → 测试: should_return_404_when_deleting_nonexistent_user
+### 3.1 POST /api/users — 用户注册
+...（完整的 Request/Response/Error 定义）
 
-请确认是否开始执行，或调整 Task/AC。
+## 4. 业务规则
+- BR1: username 全局唯一
+- BR2: 响应不返回 pwd
+
+## 待确认问题
+1. username 的最大长度？
+2. 删除是硬删除还是软删除？
 ```
 
-**用户操作**：检查清单，回复「确认」或提出修改。
+### 关键点
 
-### 2.3 Phase 2: TDD Execution（Claude 自动执行）
+- 规格覆盖所有细节：字段、类型、约束、每个状态码的触发条件
+- 如果需求信息不足，在规格末尾列出**待确认问题清单**，一次性向用户确认
+- 模板参见 `docs/spec-template.md`
 
-用户确认后，Claude 对每个 AC 严格执行 Red-Green-Refactor：
+---
 
-#### 示例：AC1 — 用户注册成功
+## 三、Phase 2: Spec Review（规格审查）
 
-**Step 1 - Red（写测试，确认失败）**
+### 用户操作
 
-Claude 编写测试：
+用户审查规格说明书，可以：
+
+- **批准**：回复"确认"或"批准"，进入 Tasking
+- **修改**：指出需要修改的部分，Claude 更新规格后重新提交
+- **补充**：添加遗漏的需求
+
+### 为什么这是唯一的质量门禁
+
+| 阶段 | 旧流程 | 新流程 |
+|------|--------|--------|
+| 需求理解 | 碎片化追问，容易遗漏 | 一次性输出完整规格 |
+| Tasking | 需要用户仔细审查每个 AC | 从规格自动推导，轻量确认 |
+| TDD 执行 | 可能因需求不清导致返工 | 规格已批准，无歧义 |
+
+**规格批准后，后续所有工作都有据可依。**
+
+---
+
+## 四、Phase 3: Tasking（任务分解）
+
+### 推导规则
+
+从规格机械推导，不需要创造性判断：
+
+| 规格内容 | 推导为 |
+|----------|--------|
+| 每个 API 端点 | 1 个 Task |
+| 每个 Success Response | 1 个 AC |
+| 每个 Error Response | 1 个 AC |
+| 每个独立的业务规则 | 1 个 AC（如未被上述覆盖）|
+
+### 示例输出
+
+```markdown
+## Tasking 分解（基于规格 v1.0）
+
+### Task 1: POST /api/users — 用户注册
+- [ ] AC1: 有效数据注册成功返回 201 + {id, username} → should_register_user_successfully
+- [ ] AC2: username 为空返回 400 → should_return_400_when_username_is_blank
+- [ ] AC3: pwd 为空返回 400 → should_return_400_when_pwd_is_blank
+- [ ] AC4: pwd 少于6位返回 400 → should_return_400_when_pwd_too_short
+- [ ] AC5: username 已存在返回 409 → should_return_409_when_username_exists
+
+### Task 2: GET /api/users/{id} — 查询用户
+- [ ] AC1: 查询存在的用户返回 200 → should_get_user_by_id
+- [ ] AC2: 查询不存在的用户返回 404 → should_return_404_when_user_not_found
+...
+```
+
+用户轻量确认后，进入 TDD 执行。
+
+---
+
+## 五、Phase 4: TDD Execution（TDD 执行）
+
+### 对每个 AC 执行 Red-Green-Refactor
+
+**Step 1 - Red**
+
+Claude 根据规格编写测试，使用 `Map.of` 构造参数：
+
 ```java
 @Test
 void should_register_user_successfully() {
     given()
-        .body("""
-            {"username": "john", "email": "john@test.com"}
-            """)
+        .body(Map.of("username", "john", "pwd", "123456"))
     .when()
         .post("/api/users")
     .then()
         .statusCode(201)
+        .body("id", notNullValue())
         .body("username", equalTo("john"))
-        .body("email", equalTo("john@test.com"))
-        .body("id", notNullValue());
+        .body("pwd", equalTo(null));
 }
 ```
 
-Claude 运行 `./mvnw test -Dtest=UserControllerTest#should_register_user_successfully`，确认编译失败或测试失败（Red）。
+运行测试，确认失败。
 
-**Step 2 - Green（最小实现，测试通过）**
+**Step 2 - Green**
 
-Claude 创建/修改必要的生产代码：
-- `User.java` (Entity)
-- `UserRepository.java` (JPA Repository)
-- `UserService.java` (Service)
-- `UserController.java` (Controller)
-- `UserRequest.java` / `UserResponse.java` (DTO)
+编写最小生产代码让测试通过。
 
-只写让这一个测试通过的最小代码。
+**Step 3 - Refactor**
 
-Claude 再次运行测试，确认通过（Green）。
+有代码异味则重构，确保测试仍然通过。
 
-**Step 3 - Refactor（可选）**
+**Step 4 - 打勾，继续下一个 AC**
 
-如果有明显的代码异味，Claude 进行重构并确保测试仍然通过。
+### 关键规则
 
-**Step 4 - 打勾**
+- 一次只做一个 AC，不跳步
+- 测试失败时自动读日志修复，不打断用户
+- 每完成一个 Task 简要汇报
+
+---
+
+## 六、Phase 5: Spec Verification（规格验证）
+
+所有 AC 完成后，Claude 逐项对照规格检查：
 
 ```markdown
-- [x] AC1: 有效数据注册成功，返回 201 + 用户信息 ✅
+## 规格验证
+
+### 实体模型
+- [x] User 表字段与规格一致（id, username, pwd）
+
+### API 端点
+- [x] POST /api/users — 5 个场景全部覆盖
+- [x] GET /api/users/{id} — 2 个场景全部覆盖
+- [x] GET /api/users — 1 个场景覆盖
+- [x] PUT /api/users/{id} — 3 个场景全部覆盖
+- [x] DELETE /api/users/{id} — 2 个场景全部覆盖
+
+### 业务规则
+- [x] BR1: username 唯一 — 通过 UNIQUE 约束 + Service 检查
+- [x] BR2: 响应不返回 pwd — UserResponse 只含 id, username
+- [x] BR3: 硬删除 — deleteById
+
+### 偏差记录
+- 无
 ```
 
-然后继续 AC2...
+---
 
-### 2.4 Phase 3: Summary（Claude 自动输出）
+## 七、Phase 6: Summary（完成汇报）
 
-全部完成后，Claude 汇报：
-
-```
+```markdown
 ## 完成汇报
 
 ### 修改/创建的文件
 - src/main/java/.../User.java (新建)
 - src/main/java/.../UserController.java (新建)
-- src/main/java/.../UserService.java (新建)
-- src/main/java/.../UserRepository.java (新建)
-- src/main/java/.../dto/UserRequest.java (新建)
-- src/main/java/.../dto/UserResponse.java (新建)
-- src/test/java/.../UserControllerTest.java (新建)
+- ...
 
 ### 测试结果
-- 总计 11 个测试，全部通过 ✅
-- 覆盖 5 个 API 端点，11 个验收条件
+- 总计 13 个测试，全部通过
+- 覆盖 5 个 API 端点，13 个验收条件
 
-### 关键决策
-- 使用 JPA @Entity 映射 users 表
-- 用户名唯一性通过数据库 UNIQUE 约束 + Service 层检查双重保障
-- 删除采用硬删除
+### 规格验证
+- 全部通过，无偏差
+
+### 规格说明书
+- docs/specs/user-management.md
 ```
 
 ---
 
-## 阶段三：实战演示
+## 八、实战演示
 
-### 完整 Prompt
+### 用户输入
 
 ```
-TDD 开发：实现用户管理系统，支持以下功能：
-1. 用户注册 POST /api/users — 用户名和邮箱必填，用户名不可重复
-2. 用户查询 GET /api/users/{id}
-3. 用户列表 GET /api/users
-4. 用户更新 PUT /api/users/{id}
-5. 用户删除 DELETE /api/users/{id}
+TDD 开发：实现用户管理系统，支持注册、查询、列表、修改密码、删除。
 ```
 
-### 预期行为
+### 完整流程
 
-1. Claude 输出 Tasking 分解（约 11 个 AC）
-2. 用户确认
-3. Claude 自动创建项目结构（如果不存在）
-4. Claude 逐个 AC 执行 TDD，每完成一个打勾
-5. 全部完成后输出汇报
+| 阶段 | 用户操作 | Claude 操作 | 产出 |
+|------|----------|-------------|------|
+| Phase 1 | 等待 | 起草规格说明书 | `docs/specs/user-management.md` |
+| Phase 2 | 审查规格，回复"username varchar(10), pwd varchar(30)" | 更新规格 | 规格 v1.1 |
+| Phase 2 | 批准 | - | 规格锁定 |
+| Phase 3 | 确认 Tasking | 从规格推导 13 个 AC | Tasking 清单 |
+| Phase 4 | 喝茶 | 逐个 AC 执行 TDD | 13 个绿灯测试 |
+| Phase 5 | - | 对照规格验证 | 验证报告 |
+| Phase 6 | Code Review | 输出汇报 | 完成 |
 
-### 示例项目
+### 参考项目
 
-参见 `example/` 目录，这是使用此 TDD 工作流生成的完整用户管理系统。
+`example/` 目录是使用此工作流生成的完整用户管理系统。
+`docs/specs/user-management.md` 是对应的规格说明书。
 
 ---
 
-## 阶段四：最佳实践
+## 九、最佳实践
 
 ### Do
 
-- **需求写清楚**：包含接口路径、必填字段、校验规则、异常情况
-- **先看 Tasking 再确认**：Claude 的分解可能遗漏边界条件，自己补充
-- **分批执行**：大需求可以分多次 TDD，不要一次扔太多
-- **Code Review**：TDD 完成后在 IDE 中审查代码质量
+- **需求可以模糊**：SDD 阶段会帮你补全细节，不需要写得很精确
+- **认真审查规格**：这是唯一的质量门禁，在这里花时间比在代码里花时间值
+- **分功能出规格**：每个独立功能一份规格，不要把所有功能塞进一个规格
+- **规格存档**：批准的规格保存在 `docs/specs/`，作为文档长期保留
 
 ### Don't
 
-- **不要中途打断**：TDD 执行阶段不要频繁干预，让 Claude 自动完成
-- **不要跳过确认**：Tasking 阶段的确认是质量门禁
-- **不要忽略失败**：如果 Claude 报告 3 次修复失败，手动介入排查
-- **不要一次做太多**：单次 TDD 建议不超过 5 个 Task / 15 个 AC
+- **不要跳过规格**：没有规格就没有 Tasking 的依据
+- **不要在 TDD 阶段改需求**：改需求应该回到规格阶段
+- **不要一次做太多**：单次建议不超过 5 个 Task / 15 个 AC
+- **不要忽略规格验证**：Phase 5 是确保没有遗漏的最后一道防线
 
 ---
 
-## 阶段五：踩坑记录与经验教训
+## 十、踩坑记录
 
-### 5.1 需求澄清必须在 Tasking 之前
+### 10.1 没有规格就开始 Tasking
 
-不要让 Claude 猜测实体字段、请求格式、校验规则。Phase 0（需求澄清）是协议的关键环节。没有明确的输入输出定义，测试用例就是无根之木。
+**后果**：AC 的字段、格式、校验规则全靠猜测，测试写了也白写。
+**正确做法**：Phase 1 起草规格 → Phase 2 用户审查批准 → 再 Tasking。
 
-### 5.2 测试数据要符合字段约束
+### 10.2 测试数据超过字段长度
 
-如果 `username varchar(10)`，测试中就不能用 `shortupdate`（11字符）这样的用户名。MySQL 会报 Data Truncation 错误。**测试用户名保持简短**。
+**后果**：`username varchar(10)` 但测试用了 11 字符的用户名，报 Data Truncation。
+**正确做法**：测试数据必须符合规格中定义的字段约束。
 
-### 5.3 用 Map.of 代替 text block JSON
+### 10.3 用 text block JSON 构造请求体
 
-```java
-// 推荐
-given().body(Map.of("username", "john", "pwd", "123456"))
+**后果**：容易出现格式错误，不可重构。
+**正确做法**：使用 `Map.of("key", "value")`。
 
-// 不推荐
-given().body("""
-    {"username": "john", "pwd": "123456"}
-    """)
-```
+### 10.4 Testcontainers 版本兼容性
 
-`Map.of` 更简洁、类型安全、IDE 可重构。
-
-### 5.4 Testcontainers 2.x 迁移
-
-升级 Testcontainers 大版本时注意 artifact 名称变了：
-- `junit-jupiter` → `testcontainers-junit-jupiter`
-- `mysql` → `testcontainers-mysql`
-
-且需要显式指定版本号，Spring Boot parent 不再管理 2.x 版本。不要只改版本号，要查阅迁移指南。
-
----
-
-## 附录：完整 Zsh 配置
-
-```bash
-# ===== Claude Code TDD 工作流 =====
-
-# 自主 TDD 驾驶
-tdd() {
-  if [ -z "$1" ]; then
-    echo "用法: tdd '你的需求'"
-    return 1
-  fi
-  claude -p "TDD 开发：$*"
-}
-
-# CRUD 快速生成
-tdd-crud() {
-  if [ -z "$1" ]; then
-    echo "用法: tdd-crud '实体名称'"
-    return 1
-  fi
-  claude -p "TDD 开发：为 $1 生成完整的 CRUD（Controller/Service/Repository）及集成测试。"
-}
-```
+**后果**：1.x 的 artifact 名称与 2.x 不同，直接改版本号会报错。
+**正确做法**：升级大版本时查阅迁移指南。
